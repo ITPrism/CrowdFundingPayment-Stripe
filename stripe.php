@@ -26,9 +26,9 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
     protected $debugType = "STRIPE_PAYMENT_PLUGIN_DEBUG";
 
     protected $extraDataKeys = array(
-        "object", "id", "created", "livemode", "type", "pending_webhooks", "request",
-        "paid", "amount", "currency", "captured", "balance_transaction", "failure_message", "failure_code",
-        "card", "last4", "brand", "funding", "exp_month", "exp_year", "country", "name", "cvc_check"
+        "object", "id", "created", "livemode", "type", "pending_webhooks", "request", "paid",
+        "amount", "currency", "captured", "balance_transaction", "failure_message", "failure_code",
+        "data"
     );
 
     /**
@@ -299,7 +299,6 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         $dataObject = array();
         if (isset($data["data"]) and isset($data["data"]["object"])) {
             $dataObject = $data["data"]["object"];
-            unset($data["data"]);
         }
 
         if (!$dataObject) {
@@ -355,9 +354,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         }
 
         // Prepare extra data.
-        $extraData               = $this->prepareExtraData($data);
-        $extraData["data"]       = $this->prepareExtraData($dataObject, "", false);
-        $validData["extra_data"] = $extraData;
+        $validData["extra_data"] = $this->prepareExtraData($data);
 
         // DEBUG DATA
         JDEBUG ? $this->log->add(JText::_($this->textPrefix . "_DEBUG_VALID_DATA"), $this->debugType, $validData) : null;
