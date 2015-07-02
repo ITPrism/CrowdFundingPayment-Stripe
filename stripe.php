@@ -1,6 +1,6 @@
 <?php
 /**
- * @package      CrowdFunding
+ * @package      Crowdfunding
  * @subpackage   Plugins
  * @author       Todor Iliev
  * @copyright    Copyright (C) 2015 Todor Iliev <todor@itprism.com>. All rights reserved.
@@ -10,21 +10,28 @@
 // no direct access
 defined('_JEXEC') or die;
 
-jimport('crowdfunding.payment.plugin');
+jimport("Prism.init");
+jimport("Crowdfunding.init");
+jimport("EmailTemplates.init");
 
 /**
- * CrowdFunding Stripe Payment Plug-in
+ * Crowdfunding Stripe Payment Plug-in
  *
- * @package      CrowdFunding
+ * @package      Crowdfunding
  * @subpackage   Plug-ins
  */
-class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
+class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
 {
     protected $paymentService = "stripe";
 
     protected $textPrefix = "PLG_CROWDFUNDINGPAYMENT_STRIPE";
     protected $debugType = "STRIPE_PAYMENT_PLUGIN_DEBUG";
 
+    /**
+     * @var JApplicationSite
+     */
+    protected $app;
+    
     protected $extraDataKeys = array(
         "object", "id", "created", "livemode", "type", "pending_webhooks", "request", "paid",
         "amount", "currency", "captured", "balance_transaction", "failure_message", "failure_code",
@@ -47,10 +54,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
             return null;
         }
 
-        $app = JFactory::getApplication();
-        /** @var $app JApplicationSite */
-
-        if ($app->isAdmin()) {
+        if ($this->app->isAdmin()) {
             return null;
         }
 
@@ -77,7 +81,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         $html[] = '<h4><img src="' . $pluginURI . '/images/stripe_icon.png" width="32" height="32" alt="Stripe" />' . JText::_($this->textPrefix . "_TITLE") . '</h4>';
 
         if (!$apiKeys["published"] or !$apiKeys["secret"]) {
-            $html[] = '<p class="alert">' . JText::_($this->textPrefix . "_ERROR_CONFIGURATION") . '</p>';
+            $html[] = '<p class="bg-warning p-10-5"><span class="glyphicon glyphicon-warning-sign"></span> ' . JText::_($this->textPrefix . "_ERROR_CONFIGURATION") . '</p>';
             $html[] = '</div>'; // Close the div "well".
             return implode("\n", $html);
         }
@@ -87,7 +91,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
 
         // Get company name.
         if (!$this->params->get("company_name")) {
-            $dataName = 'data-name="' . htmlentities($app->get("sitename"), ENT_QUOTES, "UTF-8") . '"';
+            $dataName = 'data-name="' . htmlentities($this->app->get("sitename"), ENT_QUOTES, "UTF-8") . '"';
         } else {
             $dataName = 'data-name="' . htmlentities($this->params->get("company_name"), ENT_QUOTES, "UTF-8") . '"';
         }
@@ -128,7 +132,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         }
 
         if ($this->params->get('stripe_test_mode', 1)) {
-            $html[] = '<p class="alert">' . JText::_($this->textPrefix . "_WORKS_SANDBOX") . '</p>';
+            $html[] = '<p class="bg-info p-10-5"><span class="glyphicon glyphicon-info-sign"></span> ' . JText::_($this->textPrefix . "_WORKS_SANDBOX") . '</p>';
         }
 
         $html[] = '</div>';
@@ -151,10 +155,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
             return null;
         }
 
-        $app = JFactory::getApplication();
-        /** @var $app JApplicationSite */
-
-        if ($app->isAdmin()) {
+        if ($this->app->isAdmin()) {
             return null;
         }
 
@@ -177,7 +178,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         JDEBUG ? $this->log->add(JText::_($this->textPrefix . "_DEBUG_RESPONSE_CHECKOUT"), $this->debugType, $_POST) : null;
 
         // Get token
-        $token = $app->input->get("stripeToken");
+        $token = $this->app->input->get("stripeToken");
         if (!$token) {
             throw new UnexpectedValueException(JText::_("PLG_CROWDFUNDINGPAYMENT_STRIPE_ERROR_INVALID_TRANSACTION_DATA"));
         }
@@ -191,24 +192,23 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         // Get API keys
         $apiKeys = $this->getKeys();
 
-        // Get intention.
-        $userId    = JFactory::getUser()->get("id");
-        $aUserId   = $app->getUserState("auser_id");
-        $intention = $this->getIntention(array(
-            "user_id"    => $userId,
-            "auser_id"   => $aUserId,
-            "project_id" => $item->id
+        // Get payment session.
+        $paymentSessionContext    = Crowdfunding\Constants::PAYMENT_SESSION_CONTEXT . $item->id;
+        $paymentSessionLocal      = $this->app->getUserState($paymentSessionContext);
+
+        $paymentSession = $this->getPaymentSession(array(
+            "session_id"    => $paymentSessionLocal->session_id
         ));
 
         // Import Stripe library.
-        jimport("itprism.payment.stripe.Stripe");
+        jimport("Prism.Payment.Stripe.Stripe");
 
         // Set your secret key: remember to change this to your live secret key in production
         // See your keys here https://dashboard.stripe.com/account
         Stripe::setApiKey($apiKeys["secret"]);
 
         // Get the credit card details submitted by the form
-        $token = $app->input->post->get('stripeToken');
+        $token = $this->app->input->post->get('stripeToken');
 
         // Create the charge on Stripe's servers - this will charge the user's card
         try {
@@ -220,29 +220,29 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
                     "card"        => $token,
                     "description" => $description,
                     "metadata"    => array(
-                        "intention_id" => $intention->getId()
+                        "payment_session_id" => $paymentSession->getId()
                     )
                 )
             );
 
             JDEBUG ? $this->log->add(JText::_($this->textPrefix . "_DEBUG_CHARGE_RESULT"), $this->debugType, $charge) : null;
 
-            // Store the ID to the intention as Unique Key.
-            $intention->setUniqueKey($charge->id);
-            $intention->setGateway("Stripe");
-            $intention->store();
-
+            // Store the ID to the payment session as Unique Key.
+            $paymentSession->setUniqueKey($charge->id);
+            $paymentSession->setGateway("Stripe");
+            $paymentSession->store();
+            
         } catch (Stripe_CardError $e) {
 
             // Generate output data.
-            $output["redirect_url"] = CrowdFundingHelperRoute::getBackingRoute($item->slug, $item->catslug);
+            $output["redirect_url"] = CrowdfundingHelperRoute::getBackingRoute($item->slug, $item->catslug);
             $output["message"]      = $e->getMessage();
 
             return $output;
         }
 
         // Get next URL.
-        $output["redirect_url"] = CrowdFundingHelperRoute::getBackingRoute($item->slug, $item->catslug, "share");
+        $output["redirect_url"] = CrowdfundingHelperRoute::getBackingRoute($item->slug, $item->catslug, "share");
 
         return $output;
     }
@@ -261,10 +261,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
             return null;
         }
 
-        $app = JFactory::getApplication();
-        /** @var $app JApplicationSite */
-
-        if ($app->isAdmin()) {
+        if ($this->app->isAdmin()) {
             return null;
         }
 
@@ -278,7 +275,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         }
 
         // Validate request method
-        $requestMethod = $app->input->getMethod();
+        $requestMethod = $this->app->input->getMethod();
         if (strcmp("POST", $requestMethod) != 0) {
             $this->log->add(
                 JText::_($this->textPrefix . "_ERROR_INVALID_REQUEST_METHOD"),
@@ -320,35 +317,33 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
             "payment_service" => $this->paymentService
         );
 
-        // Get intention data
-        $intentionId = JArrayHelper::getValue($dataObject["metadata"], "intention_id", 0, "int");
-
-        jimport("crowdfunding.intention");
-        $intention = new CrowdFundingIntention(JFactory::getDbo());
-        $intention->load($intentionId);
+        // Get payment session.
+        $paymentSessionId = Joomla\Utilities\ArrayHelper::getValue($dataObject["metadata"], "payment_session_id", 0, "int");
+        $paymentSession = $this->getPaymentSession(array(
+            "id" => $paymentSessionId
+        ));
 
         // DEBUG DATA
-        JDEBUG ? $this->log->add(JText::_($this->textPrefix . "_DEBUG_INTENTION"), $this->debugType, $intention->getProperties()) : null;
+        JDEBUG ? $this->log->add(JText::_($this->textPrefix . "_DEBUG_PAYMENT_SESSION"), $this->debugType, $paymentSession->getProperties()) : null;
 
         // Validate the payment gateway.
-        $gatewayName = $intention->getGateway();
+        $gatewayName = $paymentSession->getGateway();
         if (!$this->isValidPaymentGateway($gatewayName)) {
             $this->log->add(
                 JText::_($this->textPrefix . "_ERROR_INVALID_PAYMENT_GATEWAY"),
                 "STRIPE_PAYMENT_PLUGIN_ERROR",
-                $intention->getProperties()
+                $paymentSession->getProperties()
             );
 
             return null;
         }
 
         // Get currency
-        jimport("crowdfunding.currency");
         $currencyId = $params->get("project_currency");
-        $currency   = CrowdFundingCurrency::getInstance(JFactory::getDbo(), $currencyId);
+        $currency   = Crowdfunding\Currency::getInstance(JFactory::getDbo(), $currencyId);
 
         // Validate transaction data
-        $validData = $this->validateData($dataObject, $currency->getAbbr(), $intention);
+        $validData = $this->validateData($dataObject, $currency->getCode(), $paymentSession);
         if (is_null($validData)) {
             return $result;
         }
@@ -360,9 +355,8 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         JDEBUG ? $this->log->add(JText::_($this->textPrefix . "_DEBUG_VALID_DATA"), $this->debugType, $validData) : null;
 
         // Get project
-        jimport("crowdfunding.project");
-        $projectId = JArrayHelper::getValue($validData, "project_id");
-        $project   = CrowdFundingProject::getInstance(JFactory::getDbo(), $projectId);
+        $projectId = Joomla\Utilities\ArrayHelper::getValue($validData, "project_id");
+        $project   = Crowdfunding\Project::getInstance(JFactory::getDbo(), $projectId);
 
         // DEBUG DATA
         JDEBUG ? $this->log->add(JText::_($this->textPrefix . "_DEBUG_PROJECT_OBJECT"), $this->debugType, $project->getProperties()) : null;
@@ -388,7 +382,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         }
 
         // Update the number of distributed reward.
-        $rewardId = JArrayHelper::getValue($transactionData, "reward_id");
+        $rewardId = Joomla\Utilities\ArrayHelper::getValue($transactionData, "reward_id");
         $reward   = null;
         if (!empty($rewardId)) {
             $reward = $this->updateReward($transactionData);
@@ -401,28 +395,28 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
 
         //  Prepare the data that will be returned
 
-        $result["transaction"] = JArrayHelper::toObject($transactionData);
+        $result["transaction"] = Joomla\Utilities\ArrayHelper::toObject($transactionData);
 
         // Generate object of data based on the project properties
         $properties        = $project->getProperties();
-        $result["project"] = JArrayHelper::toObject($properties);
+        $result["project"] = Joomla\Utilities\ArrayHelper::toObject($properties);
 
         // Generate object of data based on the reward properties
         if (!empty($reward)) {
             $properties       = $reward->getProperties();
-            $result["reward"] = JArrayHelper::toObject($properties);
+            $result["reward"] = Joomla\Utilities\ArrayHelper::toObject($properties);
         }
 
-        // Generate data object, based on the intention properties.
-        $properties                = $intention->getProperties();
-        $result["payment_session"] = JArrayHelper::toObject($properties);
+        // Generate data object, based on the payment session properties.
+        $properties                = $paymentSession->getProperties();
+        $result["payment_session"] = Joomla\Utilities\ArrayHelper::toObject($properties);
 
         // DEBUG DATA
         JDEBUG ? $this->log->add(JText::_($this->textPrefix . "_DEBUG_RESULT_DATA"), $this->debugType, $result) : null;
 
-        // Remove intention
-        $intention->delete();
-        unset($intention);
+        // Remove payment session.
+        $txnStatus = (isset($result["transaction"]->txn_status)) ? $result["transaction"]->txn_status : null;
+        $this->closePaymentSession($paymentSession, $txnStatus);
 
         return $result;
 
@@ -446,10 +440,7 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
             return;
         }
 
-        $app = JFactory::getApplication();
-        /** @var $app JApplicationSite */
-
-        if ($app->isAdmin()) {
+        if ($this->app->isAdmin()) {
             return;
         }
 
@@ -471,37 +462,37 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
      *
      * @param array                 $data
      * @param string                $currencyCode
-     * @param CrowdFundingIntention $intention
+     * @param Crowdfunding\Payment\Session $paymentSession
      *
      * @return array
      */
-    protected function validateData($data, $currencyCode, $intention)
+    protected function validateData($data, $currencyCode, $paymentSession)
     {
-        $timesamp = JArrayHelper::getValue($data, "created");
+        $timesamp = Joomla\Utilities\ArrayHelper::getValue($data, "created");
         $date     = new JDate($timesamp);
 
         // Prepare transaction status.
-        $txnState = JArrayHelper::getValue($data, "paid", false, "bool");
+        $txnState = Joomla\Utilities\ArrayHelper::getValue($data, "paid", false, "bool");
         if ($txnState === true) {
             $txnState = "completed";
         } else {
             $txnState = "pending";
         }
 
-        $amount = JArrayHelper::getValue($data, "amount");
+        $amount = Joomla\Utilities\ArrayHelper::getValue($data, "amount");
         $amount = (float)($amount <= 0) ? 0 : $amount / 100;
 
         // Prepare transaction data.
         $transaction = array(
-            "investor_id"      => $intention->getUserId(),
-            "project_id"       => $intention->getProjectId(),
-            "reward_id"        => ($intention->isAnonymous()) ? 0 : $intention->getRewardId(),
-            "txn_id"           => JArrayHelper::getValue($data, "id"),
+            "investor_id"      => $paymentSession->getUserId(),
+            "project_id"       => $paymentSession->getProjectId(),
+            "reward_id"        => ($paymentSession->isAnonymous()) ? 0 : $paymentSession->getRewardId(),
+            "txn_id"           => Joomla\Utilities\ArrayHelper::getValue($data, "id"),
             "txn_amount"       => $amount,
             "txn_currency"     => $currencyCode,
             "txn_status"       => $txnState,
             "txn_date"         => $date->toSql(),
-            "service_provider" => JString::ucfirst($this->paymentService),
+            "service_provider" => Joomla\String\String::ucfirst($this->paymentService),
         );
 
         // Check User Id, Project ID and Transaction ID.
@@ -523,18 +514,17 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
      * Save transaction
      *
      * @param array               $transactionData
-     * @param CrowdFundingProject $project
+     * @param Crowdfunding\Project $project
      *
      * @return null|array
      */
     protected function storeTransaction($transactionData, $project)
     {
         // Get transaction by txn ID
-        jimport("crowdfunding.transaction");
         $keys        = array(
-            "txn_id" => JArrayHelper::getValue($transactionData, "txn_id")
+            "txn_id" => Joomla\Utilities\ArrayHelper::getValue($transactionData, "txn_id")
         );
-        $transaction = new CrowdFundingTransaction(JFactory::getDbo());
+        $transaction = new Crowdfunding\Transaction(JFactory::getDbo());
         $transaction->load($keys);
 
         // DEBUG DATA
@@ -574,9 +564,9 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
 
 
         // update project funded amount.
-        $amount = JArrayHelper::getValue($transactionData, "txn_amount");
+        $amount = Joomla\Utilities\ArrayHelper::getValue($transactionData, "txn_amount");
         $project->addFunds($amount);
-        $project->updateFunds();
+        $project->storeFunds();
 
         return $transactionData;
     }
@@ -591,11 +581,11 @@ class plgCrowdFundingPaymentStripe extends CrowdFundingPaymentPlugin
         $keys = array();
 
         if ($this->params->get("stripe_test_mode", 1)) { // Test server published key.
-            $keys["published"] = JString::trim($this->params->get("test_published_key"));
-            $keys["secret"]    = JString::trim($this->params->get("test_secret_key"));
+            $keys["published"] = Joomla\String\String::trim($this->params->get("test_published_key"));
+            $keys["secret"]    = Joomla\String\String::trim($this->params->get("test_secret_key"));
         } else {// Live server access token.
-            $keys["published"] = JString::trim($this->params->get("published_key"));
-            $keys["secret"]    = JString::trim($this->params->get("secret_key"));
+            $keys["published"] = Joomla\String\String::trim($this->params->get("published_key"));
+            $keys["secret"]    = Joomla\String\String::trim($this->params->get("secret_key"));
         }
 
         return $keys;
