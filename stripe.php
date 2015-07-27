@@ -132,7 +132,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         }
 
         if ($this->params->get('stripe_test_mode', 1)) {
-            $html[] = '<p class="bg-info p-10-5"><span class="glyphicon glyphicon-info-sign"></span> ' . JText::_($this->textPrefix . "_WORKS_SANDBOX") . '</p>';
+            $html[] = '<p class="bg-info p-10-5 mt-5"><span class="glyphicon glyphicon-info-sign"></span> ' . JText::_($this->textPrefix . "_WORKS_SANDBOX") . '</p>';
         }
 
         $html[] = '</div>';
@@ -426,15 +426,16 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
      * This method is executed after complete payment.
      * It is used to be sent mails to user and administrator
      *
-     * @param string                   $context
-     * @param object                   $transaction Transaction data
+     * @param string $context
+     * @param object $transaction Transaction data
      * @param Joomla\Registry\Registry $params      Component parameters
-     * @param object                   $project     Project data
-     * @param object                   $reward      Reward data
+     * @param object $project     Project data
+     * @param object $reward      Reward data
+     * @param object $paymentSession   Payment session data.
      *
      * @return void
      */
-    public function onAfterPayment($context, &$transaction, &$params, &$project, &$reward)
+    public function onAfterPayment($context, &$transaction, &$params, &$project, &$reward, &$paymentSession)
     {
         if (strcmp("com_crowdfunding.notify." . $this->paymentService, $context) != 0) {
             return;
@@ -454,7 +455,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         }
 
         // Send mails
-        $this->sendMails($project, $transaction, $params);
+        $this->sendMails($project, $transaction, $params, $reward);
     }
 
     /**
