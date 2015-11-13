@@ -3,15 +3,15 @@
     <name>PLG_CROWDFUNDINGPAYMENT_STRIPE</name>
     <author>Todor Iliev</author>
     <copyright>Copyright (C) 2015 Todor Iliev ( ITPrism.com ). All rights reserved.</copyright>
-    <license>http://www.gnu.org/copyleft/gpl.html GNU/GPL</license>
+    <license>http://www.gnu.org/licenses/gpl-3.0.en.html GNU/GPLv3</license>
     <authorEmail>todor@itprism.com</authorEmail>
     <authorUrl>http://itprism.com</authorUrl>
-    <version>2.1</version>
-    <creationDate>27 July, 2015</creationDate>
+    <version>2.2</version>
+    <creationDate>13 November, 2015</creationDate>
     <description><![CDATA[
 	<p>Crowdfunding Payment - Stripe is a plugin that provides an ability to make payments via Stripe by simple form.</p>
 	<p><a href='http://itprism.com/' target='_blank'>Subscribe for the newsletter</a> to receive information about updates and new ITPrism extensions.</p>
-	<p>Please, <a href='http://extensions.joomla.org/extensions/e-commerce/donations/23876' target='_blank'>vote for the extension</a> on Joomla! Extensions Directory</p>
+	<p>Please, <a href='http://extensions.joomla.org/extensions/extension/e-commerce/donations/crowdfunding' target='_blank'>vote for the extension</a> on Joomla! Extensions Directory</p>
 	]]></description>
     
     <help url="PLG_CROWDFUNDINGPAYMENT_STRIPE_HELP_URL"/>
@@ -40,7 +40,7 @@
 			</fieldset>
 
             <fieldset name="sandbox" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_TEST_MODE">
-                <field name="stripe_test_mode" type="radio" default="1" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_ENABLE_TEST_MODE" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_ENABLE_TEST_MODE_DESC" class="btn-group">
+                <field name="test_mode" type="radio" default="1" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_ENABLE_TEST_MODE" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_ENABLE_TEST_MODE_DESC" class="btn-group">
                     <option value="0">JNO</option>
                     <option value="1">JYES</option>
                 </field>
