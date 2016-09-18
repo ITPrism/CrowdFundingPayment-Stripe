@@ -74,6 +74,6 @@
 	</config>
 
     <updateservers>
-        <server type="extension" priority="1" name="CrowdfundingPayment - Stripe ( from CDN )">http://cdn.itprism.com/updates/crowdfunding/plugins/stripe.xml</server>
+        <server type="extension" priority="1" name="CrowdfundingPayment - Stripe ( from CDN )">http://cdn.itprism.com/updates/crowdfunding/plugins/plg_crowdfundingpayment_stripe.xml</server>
     </updateservers>
 </extension>
