@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<extension version="3.4" type="plugin" group="crowdfundingpayment" method="upgrade">
+<extension version="3.6" type="plugin" group="crowdfundingpayment" method="upgrade">
     <name>PLG_CROWDFUNDINGPAYMENT_STRIPE</name>
     <author>Todor Iliev</author>
-    <copyright>Copyright (C) 2015 Todor Iliev ( ITPrism.com ). All rights reserved.</copyright>
+    <copyright>Copyright (C) 2016 Todor Iliev ( ITPrism.com ). All rights reserved.</copyright>
     <license>http://www.gnu.org/licenses/gpl-3.0.en.html GNU/GPLv3</license>
     <authorEmail>todor@itprism.com</authorEmail>
     <authorUrl>http://itprism.com</authorUrl>
-    <version>2.2</version>
-    <creationDate>13 November, 2015</creationDate>
+    <version>2.3</version>
+    <creationDate>18 September, 2016</creationDate>
     <description><![CDATA[
 	<p>Crowdfunding Payment - Stripe is a plugin that provides an ability to make payments via Stripe by simple form.</p>
 	<p><a href='http://itprism.com/' target='_blank'>Subscribe for the newsletter</a> to receive information about updates and new ITPrism extensions.</p>
@@ -26,17 +26,14 @@
     <config>
 		<fields name="params">
 			<fieldset name="basic" addfieldpath="/administrator/components/com_crowdfunding/models/fields">
-
                 <field name="secret_key" type="text" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_SECRET_KEY" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_SECRET_KEY_DESC" class="input-xxlarge" />
                 <field name="published_key" type="text" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_PUBLISHABLE_KEY" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_PUBLISHABLE_KEY_DESC" class="input-xxlarge" />
-
                 <field name="display_info" type="radio" default="1" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_DISPLAY_INFO" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_DISPLAY_INFO_DESC" class="btn-group" >
                     <option value="0">JNO</option>
                     <option value="1">JYES</option>
                 </field>
-                
                 <field name="additional_info" type="textarea" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_ADDITIONAL_INFO" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_ADDITIONAL_INFO_DESC" class="input-xxlarge" />
-                <field name="callback_url" type="textarea" default="index.php?option=com_crowdfunding&amp;task=notifier.notify&amp;format=raw&amp;payment_service=Stripe" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_CALLBACK_URL" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_CALLBACK_URL_DESC" class="input-xxlarge" />
+                <field name="callback_url" type="cfurl" default="index.php?option=com_crowdfunding&amp;task=notifier.notify&amp;format=raw&amp;payment_service=stripe" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_CALLBACK_URL" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_CALLBACK_URL_DESC" class="input-xxlarge" />
 			</fieldset>
 
             <fieldset name="sandbox" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_TEST_MODE">
@@ -64,12 +61,10 @@
                 <field name="logo" type="text" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_IMAGE" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_IMAGE_DESC" class="input-xxlarge" />
                 <field name="panel_label" type="text" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_PANEL_LABEL" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_PANEL_LABEL_DESC" class="input-xxlarge" />
                 <field name="label" type="text" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_BUTTON_LABEL" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_BUTTON_LABEL_DESC" class="input-xxlarge" />
-
                 <field name="zip_code" type="list" default="false" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_VALIDATE_ZIP_CODE" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_VALIDATE_ZIP_CODE_DESC" >
                     <option value="false">JNO</option>
                     <option value="true">JYES</option>
                 </field>
-
                 <field name="remember_me" type="list" default="true" label="PLG_CROWDFUNDINGPAYMENT_STRIPE_INCLUDE_REMEMBER_ME" description="PLG_CROWDFUNDINGPAYMENT_STRIPE_INCLUDE_REMEMBER_ME_DESC" >
                     <option value="false">JNO</option>
                     <option value="true">JYES</option>

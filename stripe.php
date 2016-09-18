@@ -3,16 +3,27 @@
  * @package      Crowdfunding
  * @subpackage   Plugins
  * @author       Todor Iliev
- * @copyright    Copyright (C) 2015 Todor Iliev <todor@itprism.com>. All rights reserved.
+ * @copyright    Copyright (C) 2016 Todor Iliev <todor@itprism.com>. All rights reserved.
  * @license      GNU General Public License version 3 or later; see LICENSE.txt
  */
+
+use Crowdfunding\Transaction\Transaction;
+use Crowdfunding\Transaction\TransactionManager;
+use Crowdfunding\Reward;
+use Joomla\Utilities\ArrayHelper;
 
 // no direct access
 defined('_JEXEC') or die;
 
 jimport('Prism.init');
 jimport('Crowdfunding.init');
-jimport('EmailTemplates.init');
+jimport('Emailtemplates.init');
+
+JObserverMapper::addObserverClassToClass(
+    'Crowdfunding\\Observer\\Transaction\\TransactionObserver',
+    'Crowdfunding\\Transaction\\TransactionManager',
+    array('typeAlias' => 'com_crowdfunding.payment')
+);
 
 /**
  * Crowdfunding Stripe Payment Plug-in
@@ -22,20 +33,21 @@ jimport('EmailTemplates.init');
  */
 class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
 {
-    protected $extraDataKeys = array(
-        'object', 'id', 'created', 'livemode', 'type', 'pending_webhooks', 'request', 'paid',
-        'amount', 'currency', 'captured', 'balance_transaction', 'failure_message', 'failure_code',
-        'data'
-    );
-
     public function __construct(&$subject, $config = array())
     {
         parent::__construct($subject, $config);
 
         $this->serviceProvider = 'Stripe';
         $this->serviceAlias    = 'stripe';
-        $this->textPrefix     .= '_' . \JString::strtoupper($this->serviceAlias);
-        $this->debugType      .= '_' . \JString::strtoupper($this->serviceAlias);
+        $this->textPrefix     .= '_' . strtoupper($this->serviceAlias);
+        $this->debugType      .= '_' . strtoupper($this->serviceAlias);
+        $this->errorType      .= '_' . strtoupper($this->serviceAlias);
+
+        $this->extraDataKeys   = array(
+            'object', 'id', 'created', 'livemode', 'type', 'pending_webhooks', 'request', 'paid',
+            'amount', 'currency', 'captured', 'balance_transaction', 'failure_message', 'failure_code',
+            'data'
+        );
     }
 
     /**
@@ -43,12 +55,13 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
      * That gateway will be displayed on the summary page as a payment option.
      *
      * @param string                   $context This string gives information about that where it has been executed the trigger.
-     * @param object                   $item    A project data.
+     * @param stdClass                 $item    A project data.
      * @param Joomla\Registry\Registry $params  The parameters of the component
      *
+     * @throws \InvalidArgumentException
      * @return null|string
      */
-    public function onProjectPayment($context, &$item, &$params)
+    public function onProjectPayment($context, $item, $params)
     {
         if (strcmp('com_crowdfunding.payment', $context) !== 0) {
             return null;
@@ -147,9 +160,12 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
      * @param stdClass                 $item
      * @param Joomla\Registry\Registry $params
      *
-     * @return null|array
+     * @throws \UnexpectedValueException
+     * @throws \InvalidArgumentException
+     *
+     * @return null|stdClass
      */
-    public function onPaymentsCheckout($context, &$item, &$params)
+    public function onPaymentsCheckout($context, $item, $params)
     {
         if (strcmp('com_crowdfunding.payments.checkout.stripe', $context) !== 0) {
             return null;
@@ -169,10 +185,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         }
 
         // Prepare output data.
-        $output = array(
-            'redirect_url' => '',
-            'message'      => ''
-        );
+        $paymentResponse = new stdClass;
 
         // DEBUG DATA
         JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_RESPONSE_CHECKOUT'), $this->debugType, $_POST) : null;
@@ -196,7 +209,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         $paymentSessionContext    = Crowdfunding\Constants::PAYMENT_SESSION_CONTEXT . $item->id;
         $paymentSessionLocal      = $this->app->getUserState($paymentSessionContext);
 
-        $paymentSession = $this->getPaymentSession(array(
+        $paymentSessionRemote = $this->getPaymentSession(array(
             'session_id'    => $paymentSessionLocal->session_id
         ));
 
@@ -212,7 +225,6 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
 
         // Create the charge on Stripe's servers - this will charge the user's card
         try {
-
             $charge = Stripe\Charge::create(
                 array(
                     'amount'      => $amount, // amount in cents, again
@@ -220,7 +232,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
                     'card'        => $token,
                     'description' => $description,
                     'metadata'    => array(
-                        'payment_session_id' => $paymentSession->getId()
+                        'payment_session_id' => $paymentSessionRemote->getId()
                     )
                 )
             );
@@ -228,23 +240,21 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
             JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_CHARGE_RESULT'), $this->debugType, $charge) : null;
 
             // Store the ID to the payment session as Unique Key.
-            $paymentSession->setUniqueKey($charge->id);
-            $paymentSession->setGateway($this->serviceAlias);
-            $paymentSession->store();
-            
+            $paymentSessionRemote->setUniqueKey($charge->id);
+            $paymentSessionRemote->setGateway($this->serviceAlias);
+            $paymentSessionRemote->store();
         } catch (Stripe\Error\Card $e) {
-
             // Generate output data.
-            $output['redirect_url'] = CrowdfundingHelperRoute::getBackingRoute($item->slug, $item->catslug);
-            $output['message']      = $e->getMessage();
+            $paymentResponse->redirectUrl = CrowdfundingHelperRoute::getBackingRoute($item->slug, $item->catslug);
+            $paymentResponse->message     = $e->getMessage();
 
-            return $output;
+            return $paymentResponse;
         }
 
         // Get next URL.
-        $output['redirect_url'] = CrowdfundingHelperRoute::getBackingRoute($item->slug, $item->catslug, 'share');
+        $paymentResponse->redirectUrl = CrowdfundingHelperRoute::getBackingRoute($item->slug, $item->catslug, 'share');
 
-        return $output;
+        return $paymentResponse;
     }
 
     /**
@@ -253,9 +263,14 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
      * @param string                   $context This string gives information about that where it has been executed the trigger.
      * @param Joomla\Registry\Registry $params  The parameters of the component
      *
-     * @return null|array
+     * @throws \InvalidArgumentException
+     * @throws \OutOfBoundsException
+     * @throws \RuntimeException
+     * @throws \UnexpectedValueException
+     *
+     * @return null|stdClass
      */
-    public function onPaymentNotify($context, &$params)
+    public function onPaymentNotify($context, $params)
     {
         if (strcmp('com_crowdfunding.notify.stripe', $context) !== 0) {
             return null;
@@ -277,12 +292,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         // Validate request method
         $requestMethod = $this->app->input->getMethod();
         if (strcmp('POST', $requestMethod) !== 0) {
-            $this->log->add(
-                JText::_($this->textPrefix . '_ERROR_INVALID_REQUEST_METHOD'),
-                'STRIPE_PAYMENT_PLUGIN_ERROR',
-                JText::sprintf($this->textPrefix . '_ERROR_INVALID_TRANSACTION_REQUEST_METHOD', $requestMethod)
-            );
-
+            $this->log->add(JText::_($this->textPrefix . '_ERROR_INVALID_REQUEST_METHOD'), $this->errorType, JText::sprintf($this->textPrefix . '_ERROR_INVALID_TRANSACTION_REQUEST_METHOD', $requestMethod));
             return null;
         }
 
@@ -299,54 +309,49 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         }
 
         if (!$dataObject) {
-            $this->log->add(
-                JText::_($this->textPrefix . '_ERROR_INVALID_DATA_OBJECT'),
-                'STRIPE_PAYMENT_PLUGIN_ERROR',
-                $dataObject
-            );
-
+            $this->log->add(JText::_($this->textPrefix . '_ERROR_INVALID_DATA_OBJECT'), $this->errorType, $dataObject);
             return null;
         }
 
-        // Prepare the array that will be returned by this method
-        $result = array(
-            'project'          => null,
-            'reward'           => null,
-            'transaction'      => null,
-            'payment_session'  => null,
-            'service_provider' => $this->serviceProvider,
-            'service_alias'    => $this->serviceAlias
-        );
+        // Prepare the array that have to be returned by this method.
+        $paymentResult                  = new stdClass;
+        $paymentResult->project         = null;
+        $paymentResult->reward          = null;
+        $paymentResult->transaction     = null;
+        $paymentResult->paymentSession  = null;
+        $paymentResult->serviceProvider = $this->serviceProvider;
+        $paymentResult->serviceAlias    = $this->serviceAlias;
 
         // Get payment session.
-        $paymentSessionId = Joomla\Utilities\ArrayHelper::getValue($dataObject['metadata'], 'payment_session_id', 0, 'int');
-        $paymentSession = $this->getPaymentSession(array(
+        $paymentSessionId       = ArrayHelper::getValue($dataObject['metadata'], 'payment_session_id', 0, 'int');
+        $paymentSessionRemote   = $this->getPaymentSession(array(
             'id' => $paymentSessionId
         ));
 
+        // Check for valid payment session.
+        if (!$paymentSessionRemote->getId()) {
+            $this->log->add(JText::_($this->textPrefix . '_ERROR_PAYMENT_SESSION'), $this->errorType, $paymentSessionRemote->getProperties());
+            return null;
+        }
+
         // DEBUG DATA
-        JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_PAYMENT_SESSION'), $this->debugType, $paymentSession->getProperties()) : null;
+        JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_PAYMENT_SESSION'), $this->debugType, $paymentSessionRemote->getProperties()) : null;
 
         // Validate the payment gateway.
-        $gatewayName = $paymentSession->getGateway();
+        $gatewayName = $paymentSessionRemote->getGateway();
         if (!$this->isValidPaymentGateway($gatewayName)) {
-            $this->log->add(
-                JText::_($this->textPrefix . '_ERROR_INVALID_PAYMENT_GATEWAY'),
-                'STRIPE_PAYMENT_PLUGIN_ERROR',
-                $paymentSession->getProperties()
-            );
-
+            $this->log->add(JText::_($this->textPrefix . '_ERROR_INVALID_PAYMENT_GATEWAY'), $this->errorType, $paymentSessionRemote->getProperties());
             return null;
         }
 
         // Get currency
-        $currencyId = $params->get('project_currency');
-        $currency   = Crowdfunding\Currency::getInstance(JFactory::getDbo(), $currencyId);
+        $containerHelper  = new Crowdfunding\Container\Helper();
+        $currency         = $containerHelper->fetchCurrency($this->container, $params);
 
         // Validate transaction data
-        $validData = $this->validateData($dataObject, $currency->getCode(), $paymentSession);
+        $validData = $this->validateData($dataObject, $currency->getCode(), $paymentSessionRemote);
         if ($validData === null) {
-            return $result;
+            return null;
         }
 
         // Prepare extra data.
@@ -355,71 +360,51 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         // DEBUG DATA
         JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_VALID_DATA'), $this->debugType, $validData) : null;
 
-        // Get project
-        $projectId = Joomla\Utilities\ArrayHelper::getValue($validData, 'project_id');
-        $project   = Crowdfunding\Project::getInstance(JFactory::getDbo(), $projectId);
-
-        // DEBUG DATA
-        JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_PROJECT_OBJECT'), $this->debugType, $project->getProperties()) : null;
-
-        // Check for valid project
-        if (!$project->getId()) {
-            $error = JText::_($this->textPrefix . '_ERROR_INVALID_PROJECT');
-            $error .= '\n' . JText::sprintf($this->textPrefix . '_TRANSACTION_DATA', var_export($validData, true));
-            JLog::add($error);
-
-            return $result;
-        }
-
-        // Set the receiver of funds
+        // Set the receiver ID.
+        $project = $containerHelper->fetchProject($this->container, $validData['project_id']);
         $validData['receiver_id'] = $project->getUserId();
+
+        // Get reward object.
+        $reward = null;
+        if ($validData['reward_id']) {
+            $reward = $containerHelper->fetchReward($this->container, $validData['reward_id'], $project->getId());
+
+            // Check for valid reward ID.
+            if (!$reward) {
+                $validData['reward_id'] = 0;
+            }
+        }
 
         // Save transaction data.
         // If it is not completed, return empty results.
         // If it is complete, continue with process transaction data
-        $transactionData = $this->storeTransaction($validData, $project);
-        if ($transactionData === null) {
-            return $result;
-        }
-
-        // Update the number of distributed reward.
-        $rewardId = Joomla\Utilities\ArrayHelper::getValue($transactionData, 'reward_id');
-        $reward   = null;
-        if ($rewardId > 0) {
-            $reward = $this->updateReward($transactionData);
-
-            // Validate the reward.
-            if (!$reward) {
-                $transactionData['reward_id'] = 0;
-            }
+        $transaction = $this->storeTransaction($validData);
+        if ($transaction === null) {
+            return null;
         }
 
         //  Prepare the data that will be returned
 
-        $result['transaction'] = Joomla\Utilities\ArrayHelper::toObject($transactionData);
+        // Generate object of data, based on the transaction properties.
+        $paymentResult->transaction = $transaction;
 
-        // Generate object of data based on the project properties
-        $properties        = $project->getProperties();
-        $result['project'] = Joomla\Utilities\ArrayHelper::toObject($properties);
+        // Generate object of data based on the project properties.
+        $paymentResult->project = $project;
 
-        // Generate object of data based on the reward properties
+        // Generate object of data based on the reward properties.
         if ($reward !== null and ($reward instanceof Crowdfunding\Reward)) {
-            $properties       = $reward->getProperties();
-            $result['reward'] = Joomla\Utilities\ArrayHelper::toObject($properties);
+            $paymentResult->reward = $reward;
         }
 
         // Generate data object, based on the payment session properties.
-        $properties                = $paymentSession->getProperties();
-        $result['payment_session'] = Joomla\Utilities\ArrayHelper::toObject($properties);
+        $paymentResult->paymentSession = $paymentSessionRemote;
 
-        // DEBUG DATA
-        JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_RESULT_DATA'), $this->debugType, $result) : null;
+        // Prepare the flag for removing intention.
+        $removeIntention  = (strcmp('completed', $transaction->getStatus()) === 0 or strcmp('pending', $transaction->getStatus()) === 0);
 
-        // Remove payment session.
-        $txnStatus = (isset($result['transaction']->txn_status)) ? $result['transaction']->txn_status : null;
-        $this->closePaymentSession($paymentSession, $txnStatus);
+        $this->closePaymentSession($paymentSessionRemote, $removeIntention);
 
-        return $result;
+        return $paymentResult;
     }
 
     /**
@@ -429,30 +414,32 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
      * @param string                $currencyCode
      * @param Crowdfunding\Payment\Session $paymentSession
      *
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
      * @return array
      */
     protected function validateData($data, $currencyCode, $paymentSession)
     {
-        $timestamp = Joomla\Utilities\ArrayHelper::getValue($data, 'created');
+        $timestamp = ArrayHelper::getValue($data, 'created');
         $date      = new JDate($timestamp);
 
         // Prepare transaction status.
-        $txnStateResult = Joomla\Utilities\ArrayHelper::getValue($data, 'paid', false, 'bool');
+        $txnStateResult = ArrayHelper::getValue($data, 'paid', false, 'bool');
 
         $txnState = 'pending';
         if ($txnStateResult === true) {
             $txnState = 'completed';
         }
 
-        $amount = Joomla\Utilities\ArrayHelper::getValue($data, 'amount');
+        $amount = ArrayHelper::getValue($data, 'amount');
         $amount = (float)($amount <= 0) ? 0 : $amount / 100;
 
         // Prepare transaction data.
-        $transaction = array(
+        $transactionData = array(
             'investor_id'      => $paymentSession->getUserId(),
             'project_id'       => $paymentSession->getProjectId(),
-            'reward_id'        => ($paymentSession->isAnonymous()) ? 0 : $paymentSession->getRewardId(),
-            'txn_id'           => Joomla\Utilities\ArrayHelper::getValue($data, 'id'),
+            'reward_id'        => $paymentSession->isAnonymous() ? 0 : $paymentSession->getRewardId(),
+            'txn_id'           => ArrayHelper::getValue($data, 'id'),
             'txn_amount'       => $amount,
             'txn_currency'     => $currencyCode,
             'txn_status'       => $txnState,
@@ -462,35 +449,48 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         );
 
         // Check User Id, Project ID and Transaction ID.
-        if (!$transaction['project_id'] or !$transaction['txn_id']) {
-            // Log data in the database
-            $this->log->add(
-                JText::_($this->textPrefix . '_ERROR_INVALID_TRANSACTION_DATA'),
-                'STRIPE_PAYMENT_PLUGIN_ERROR',
-                $transaction
-            );
-
+        if (!$transactionData['project_id'] or !$transactionData['txn_id']) {
+            $this->log->add(JText::_($this->textPrefix . '_ERROR_INVALID_TRANSACTION_DATA'), $this->errorType, $transactionData);
             return null;
         }
 
-        return $transaction;
+        // Check if project record exists in database.
+        $projectRecord = new Crowdfunding\Validator\Project\Record(JFactory::getDbo(), $transactionData['project_id']);
+        if (!$projectRecord->isValid()) {
+            $this->log->add(JText::_($this->textPrefix . '_ERROR_INVALID_PROJECT'), $this->errorType, $transactionData);
+            return null;
+        }
+
+        // Check if reward record exists in database.
+        if ($transactionData['reward_id'] > 0) {
+            $rewardRecord = new Crowdfunding\Validator\Reward\Record(JFactory::getDbo(), $transactionData['reward_id'], array('state' => Prism\Constants::PUBLISHED));
+            if (!$rewardRecord->isValid()) {
+                $this->log->add(JText::_($this->textPrefix . '_ERROR_INVALID_REWARD'), $this->errorType, $transactionData);
+                return null;
+            }
+        }
+
+        return $transactionData;
     }
 
     /**
      * Save transaction
      *
-     * @param array               $transactionData
-     * @param Crowdfunding\Project $project
+     * @param array $transactionData
      *
-     * @return null|array
+     * @throws \InvalidArgumentException
+     * @throws \RuntimeException
+     *
+     * @return Transaction|null
      */
-    protected function storeTransaction($transactionData, $project)
+    protected function storeTransaction($transactionData)
     {
         // Get transaction by txn ID
         $keys        = array(
-            'txn_id' => Joomla\Utilities\ArrayHelper::getValue($transactionData, 'txn_id')
+            'txn_id' => ArrayHelper::getValue($transactionData, 'txn_id')
         );
-        $transaction = new Crowdfunding\Transaction(JFactory::getDbo());
+        /** @var Crowdfunding\Transaction\Transaction $transaction */
+        $transaction = new Transaction(JFactory::getDbo());
         $transaction->load($keys);
 
         // DEBUG DATA
@@ -509,26 +509,37 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
             $transactionData['extra_data'] = null;
         }
 
-        // Store the new transaction data.
+        // IMPORTANT: It must be before ->bind();
+        $options = array(
+            'old_status' => $transaction->getStatus(),
+            'new_status' => $transactionData['txn_status']
+        );
+
+        // Create the new transaction record if there is not record.
+        // If there is new record, store new data with new status.
+        // Example: It has been 'pending' and now is 'completed'.
+        // Example2: It has been 'pending' and now is 'failed'.
         $transaction->bind($transactionData);
-        $transaction->store();
 
-        // Set transaction ID.
-        $transactionData['id'] = $transaction->getId();
+        // Start database transaction.
+        $db = JFactory::getDbo();
+        $db->transactionStart();
 
-        // If it is not completed (it might be pending or other status),
-        // stop the process. Only completed transaction will continue
-        // and will process the project, rewards,...
-        if (!$transaction->isCompleted()) {
+        try {
+            $transactionManager = new TransactionManager($db);
+            $transactionManager->setTransaction($transaction);
+            $transactionManager->process('com_crowdfunding.payment', $options);
+        } catch (Exception $e) {
+            $db->transactionRollback();
+
+            $this->log->add(JText::_($this->textPrefix . '_ERROR_TRANSACTION_PROCESS'), $this->errorType, $e->getMessage());
             return null;
         }
-        
-        // update project funded amount.
-        $amount = Joomla\Utilities\ArrayHelper::getValue($transactionData, 'txn_amount');
-        $project->addFunds($amount);
-        $project->storeFunds();
 
-        return $transactionData;
+        // Commit database transaction.
+        $db->transactionCommit();
+
+        return $transaction;
     }
 
     /**
@@ -541,11 +552,11 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         $keys = array();
 
         if ($this->params->get('stripe_test_mode', 1)) { // Test server published key.
-            $keys['published'] = JString::trim($this->params->get('test_published_key'));
-            $keys['secret']    = JString::trim($this->params->get('test_secret_key'));
+            $keys['published'] = trim($this->params->get('test_published_key'));
+            $keys['secret']    = trim($this->params->get('test_secret_key'));
         } else {// Live server access token.
-            $keys['published'] = JString::trim($this->params->get('published_key'));
-            $keys['secret']    = JString::trim($this->params->get('secret_key'));
+            $keys['published'] = trim($this->params->get('published_key'));
+            $keys['secret']    = trim($this->params->get('secret_key'));
         }
 
         return $keys;
