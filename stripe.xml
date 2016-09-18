@@ -9,7 +9,7 @@
     <version>2.3</version>
     <creationDate>18 September, 2016</creationDate>
     <description><![CDATA[
-	<p>Crowdfunding Payment - Stripe is a plugin that provides an ability to make payments via Stripe by simple form.</p>
+	<p>CrowdfundingPayment - Stripe is a plugin that provides an ability to make payments via Stripe by simple form.</p>
 	<p><a href='http://itprism.com/' target='_blank'>Subscribe for the newsletter</a> to receive information about updates and new ITPrism extensions.</p>
 	<p>Please, <a href='http://extensions.joomla.org/extensions/extension/e-commerce/donations/crowdfunding' target='_blank'>vote for the extension</a> on Joomla! Extensions Directory</p>
 	]]></description>
@@ -72,4 +72,8 @@
             </fieldset>
         </fields>
 	</config>
+
+    <updateservers>
+        <server type="extension" priority="1" name="CrowdfundingPayment - Stripe ( from CDN )">http://cdn.itprism.com/updates/crowdfunding/plugins/stripe.xml</server>
+    </updateservers>
 </extension>
