@@ -399,10 +399,8 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         // Generate data object, based on the payment session properties.
         $paymentResult->paymentSession = $paymentSessionRemote;
 
-        // Prepare the flag for removing intention.
-        $removeIntention  = (strcmp('completed', $transaction->getStatus()) === 0 or strcmp('pending', $transaction->getStatus()) === 0);
-
-        $this->closePaymentSession($paymentSessionRemote, $removeIntention);
+        // Removing intention.
+        $this->removeIntention($paymentSessionRemote, $transaction);
 
         return $paymentResult;
     }
