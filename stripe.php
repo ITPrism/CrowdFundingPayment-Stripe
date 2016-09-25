@@ -35,19 +35,16 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
 {
     public function __construct(&$subject, $config = array())
     {
-        parent::__construct($subject, $config);
-
         $this->serviceProvider = 'Stripe';
         $this->serviceAlias    = 'stripe';
-        $this->textPrefix     .= '_' . strtoupper($this->serviceAlias);
-        $this->debugType      .= '_' . strtoupper($this->serviceAlias);
-        $this->errorType      .= '_' . strtoupper($this->serviceAlias);
 
         $this->extraDataKeys   = array(
             'object', 'id', 'created', 'livemode', 'type', 'pending_webhooks', 'request', 'paid',
             'amount', 'currency', 'captured', 'balance_transaction', 'failure_message', 'failure_code',
             'data'
         );
+
+        parent::__construct($subject, $config);
     }
 
     /**
@@ -368,11 +365,6 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         $reward = null;
         if ($validData['reward_id']) {
             $reward = $containerHelper->fetchReward($this->container, $validData['reward_id'], $project->getId());
-
-            // Check for valid reward ID.
-            if (!$reward) {
-                $validData['reward_id'] = 0;
-            }
         }
 
         // Save transaction data.
@@ -495,7 +487,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_TRANSACTION_OBJECT'), $this->debugType, $transaction->getProperties()) : null;
 
         // Check for existed transaction.
-        // If the current status if completed, stop the process.
+        // If the current status is completed, stop the process.
         if ($transaction->getId() and $transaction->isCompleted()) {
             return null;
         }
