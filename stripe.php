@@ -3,14 +3,14 @@
  * @package      Crowdfunding
  * @subpackage   Plugins
  * @author       Todor Iliev
- * @copyright    Copyright (C) 2016 Todor Iliev <todor@itprism.com>. All rights reserved.
+ * @copyright    Copyright (C) 2017 Todor Iliev <todor@itprism.com>. All rights reserved.
  * @license      GNU General Public License version 3 or later; see LICENSE.txt
  */
 
 use Crowdfunding\Transaction\Transaction;
 use Crowdfunding\Transaction\TransactionManager;
-use Crowdfunding\Reward;
 use Joomla\Utilities\ArrayHelper;
+use Prism\Payment\Result as PaymentResult;
 
 // no direct access
 defined('_JEXEC') or die;
@@ -18,12 +18,9 @@ defined('_JEXEC') or die;
 jimport('Prism.init');
 jimport('Crowdfunding.init');
 jimport('Emailtemplates.init');
+jimport('Prism.libs.Stripe.init');
 
-JObserverMapper::addObserverClassToClass(
-    'Crowdfunding\\Observer\\Transaction\\TransactionObserver',
-    'Crowdfunding\\Transaction\\TransactionManager',
-    array('typeAlias' => 'com_crowdfunding.payment')
-);
+JObserverMapper::addObserverClassToClass(Crowdfunding\Observer\Transaction\TransactionObserver::class, Crowdfunding\Transaction\TransactionManager::class, array('typeAlias' => 'com_crowdfunding.payment'));
 
 /**
  * Crowdfunding Stripe Payment Plug-in
@@ -110,7 +107,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         $dataDescription = JText::sprintf($this->textPrefix . '_INVESTING_IN_S', htmlentities($item->title, ENT_QUOTES, 'UTF-8'));
 
         // Get amount.
-        $dataAmount = abs($item->amount * 100);
+        $dataAmount = (int)abs($item->amount * 100);
 
         $dataPanelLabel = (!$this->params->get('panel_label')) ? '' : 'data-panel-label="' . $this->params->get('panel_label') . '"';
         $dataLabel      = (!$this->params->get('label')) ? '' : 'data-label="' . $this->params->get('label') . '"';
@@ -160,7 +157,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
      * @throws \UnexpectedValueException
      * @throws \InvalidArgumentException
      *
-     * @return null|stdClass
+     * @return null|PaymentResult
      */
     public function onPaymentsCheckout($context, $item, $params)
     {
@@ -182,7 +179,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         }
 
         // Prepare output data.
-        $paymentResponse = new stdClass;
+        $paymentResponse = new PaymentResult;
 
         // DEBUG DATA
         JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_RESPONSE_CHECKOUT'), $this->debugType, $_POST) : null;
@@ -197,7 +194,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         $description = JText::sprintf($this->textPrefix . '_INVESTING_IN_S', htmlentities($item->title, ENT_QUOTES, 'UTF-8'));
 
         // Prepare amounts in cents.
-        $amount = abs($item->amount * 100);
+        $amount = (int)abs($item->amount * 100);
 
         // Get API keys
         $apiKeys = $this->getKeys();
@@ -209,9 +206,6 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         $paymentSessionRemote = $this->getPaymentSession(array(
             'session_id'    => $paymentSessionLocal->session_id
         ));
-
-        // Import Stripe library.
-        jimport('Prism.libs.Stripe.init');
 
         // Set your secret key: remember to change this to your live secret key in production
         // See your keys here https://dashboard.stripe.com/account
@@ -251,6 +245,9 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         // Get next URL.
         $paymentResponse->redirectUrl = CrowdfundingHelperRoute::getBackingRoute($item->slug, $item->catslug, 'share');
 
+        // Disable After Events.
+        $paymentResponse->triggerEvents = array();
+
         return $paymentResponse;
     }
 
@@ -265,7 +262,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
      * @throws \RuntimeException
      * @throws \UnexpectedValueException
      *
-     * @return null|stdClass
+     * @return null|PaymentResult
      */
     public function onPaymentNotify($context, $params)
     {
@@ -311,13 +308,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         }
 
         // Prepare the array that have to be returned by this method.
-        $paymentResult                  = new stdClass;
-        $paymentResult->project         = null;
-        $paymentResult->reward          = null;
-        $paymentResult->transaction     = null;
-        $paymentResult->paymentSession  = null;
-        $paymentResult->serviceProvider = $this->serviceProvider;
-        $paymentResult->serviceAlias    = $this->serviceAlias;
+        $paymentResult          = new PaymentResult;
 
         // Get payment session.
         $paymentSessionId       = ArrayHelper::getValue($dataObject['metadata'], 'payment_session_id', 0, 'int');
@@ -428,7 +419,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         $transactionData = array(
             'investor_id'      => $paymentSession->getUserId(),
             'project_id'       => $paymentSession->getProjectId(),
-            'reward_id'        => $paymentSession->isAnonymous() ? 0 : $paymentSession->getRewardId(),
+            'reward_id'        => $paymentSession->getRewardId(),
             'txn_id'           => ArrayHelper::getValue($data, 'id'),
             'txn_amount'       => $amount,
             'txn_currency'     => $currencyCode,
@@ -513,21 +504,21 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
 
         // Start database transaction.
         $db = JFactory::getDbo();
-        $db->transactionStart();
 
         try {
+            $db->transactionStart();
+
             $transactionManager = new TransactionManager($db);
             $transactionManager->setTransaction($transaction);
             $transactionManager->process('com_crowdfunding.payment', $options);
+
+            $db->transactionCommit();
         } catch (Exception $e) {
             $db->transactionRollback();
 
             $this->log->add(JText::_($this->textPrefix . '_ERROR_TRANSACTION_PROCESS'), $this->errorType, $e->getMessage());
             return null;
         }
-
-        // Commit database transaction.
-        $db->transactionCommit();
 
         return $transaction;
     }
