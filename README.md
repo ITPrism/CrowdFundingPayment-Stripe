@@ -1,6 +1,6 @@
 Crowdfunding Payment - Stripe
 ==========================
-( Version 2.4 )
+( Version 2.4.1 )
 - - -
 
 This is a plug-in for Crowdfunding platform, which provides an ability to make payments via Stripe by simple form.

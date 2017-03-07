@@ -1,6 +1,9 @@
 CrowdfundingPayment - Stripe Changelog
 ==================================
 
+###v2.4.1
+* Fixed text mode.
+
 ###v2.4
 * Improved.
 

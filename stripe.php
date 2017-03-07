@@ -138,7 +138,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
             $html[] = '<p>' . htmlentities($this->params->get('additional_info'), ENT_QUOTES, 'UTF-8') . '</p>';
         }
 
-        if ($this->params->get('stripe_test_mode', 1)) {
+        if ($this->params->get('test_mode', 1)) {
             $html[] = '<p class="bg-info p-10-5 mt-5"><span class="fa fa-info-circle"></span> ' . JText::_($this->textPrefix . '_WORKS_SANDBOX') . '</p>';
         }
 
@@ -532,7 +532,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
     {
         $keys = array();
 
-        if ($this->params->get('stripe_test_mode', 1)) { // Test server published key.
+        if ($this->params->get('test_mode', 1)) { // Test server published key.
             $keys['published'] = trim($this->params->get('test_published_key'));
             $keys['secret']    = trim($this->params->get('test_secret_key'));
         } else {// Live server access token.
