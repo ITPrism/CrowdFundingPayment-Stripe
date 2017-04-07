@@ -1,8 +1,12 @@
 CrowdfundingPayment - Stripe Changelog
 ==================================
 
+###v2.4.2
+* [Fixed] There was an issue with the version of Stripe API.
+* [Fixed] It redirects to wrong page after payemnt.
+
 ###v2.4.1
-* Fixed text mode.
+* Fixed test mode.
 
 ###v2.4
 * Improved.

@@ -6,8 +6,8 @@
     <license>http://www.gnu.org/licenses/gpl-3.0.en.html GNU/GPLv3</license>
     <authorEmail>todor@itprism.com</authorEmail>
     <authorUrl>http://itprism.com</authorUrl>
-    <version>2.4.1</version>
-    <creationDate>07 March, 2017</creationDate>
+    <version>2.4.2</version>
+    <creationDate>02 April, 2017</creationDate>
     <description><![CDATA[
 	<p>CrowdfundingPayment - Stripe is a plugin that provides an ability to make payments via Stripe by simple form.</p>
 	<p><a href='http://itprism.com/' target='_blank'>Subscribe for the newsletter</a> to receive information about updates and new ITPrism extensions.</p>

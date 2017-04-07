@@ -116,7 +116,7 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
         $optionalData = array($dataLabel, $dataPanelLabel, $dataName, $dataImage);
         $optionalData = array_filter($optionalData);
 
-        $html[] = '<form action="/index.php?com_crowdfunding" method="post">';
+        $html[] = '<form action="/index.php?option=com_crowdfunding" method="post">';
         $html[] = '<script
             src="https://checkout.stripe.com/checkout.js" class="stripe-button"
             data-key="' . $apiKeys['published'] . '"
@@ -190,6 +190,9 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
             throw new UnexpectedValueException(JText::_('PLG_CROWDFUNDINGPAYMENT_STRIPE_ERROR_INVALID_TRANSACTION_DATA'));
         }
 
+        // DEBUG DATA
+        JDEBUG ? $this->log->add(JText::_('TOKEN'), $this->debugType, $token) : null;
+
         // Prepare description.
         $description = JText::sprintf($this->textPrefix . '_INVESTING_IN_S', htmlentities($item->title, ENT_QUOTES, 'UTF-8'));
 
@@ -207,26 +210,25 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
             'session_id'    => $paymentSessionLocal->session_id
         ));
 
-        // Set your secret key: remember to change this to your live secret key in production
-        // See your keys here https://dashboard.stripe.com/account
-        Stripe\Stripe::setApiKey($apiKeys['secret']);
-
-        // Get the credit card details submitted by the form
-        $token = $this->app->input->post->get('stripeToken');
-
         // Create the charge on Stripe's servers - this will charge the user's card
         try {
-            $charge = Stripe\Charge::create(
-                array(
-                    'amount'      => $amount, // amount in cents, again
-                    'currency'    => $item->currencyCode,
-                    'card'        => $token,
-                    'description' => $description,
-                    'metadata'    => array(
-                        'payment_session_id' => $paymentSessionRemote->getId()
-                    )
+            $options = array(
+                'amount'      => $amount, // amount in cents, again
+                'currency'    => strtolower($item->currencyCode),
+                'source'      => $token,
+                'description' => $description,
+                'metadata'    => array(
+                    'payment_session_id' => $paymentSessionRemote->getId()
                 )
             );
+
+            JDEBUG ? $this->log->add('Charge Options', $this->debugType, $options) : null;
+
+            // Set your secret key: remember to change this to your live secret key in production
+            // See your keys here https://dashboard.stripe.com/account
+            Stripe\Stripe::setApiKey($apiKeys['secret']);
+
+            $charge = Stripe\Charge::create($options);
 
             JDEBUG ? $this->log->add(JText::_($this->textPrefix . '_DEBUG_CHARGE_RESULT'), $this->debugType, $charge) : null;
 
@@ -240,13 +242,18 @@ class plgCrowdfundingPaymentStripe extends Crowdfunding\Payment\Plugin
             $paymentResponse->message     = $e->getMessage();
 
             return $paymentResponse;
+        } catch (Exception $e) {
+            JDEBUG ? $this->log->add('Charge Error', $this->debugType, $e->getMessage()) : null;
         }
 
+
         // Get next URL.
-        $paymentResponse->redirectUrl = CrowdfundingHelperRoute::getBackingRoute($item->slug, $item->catslug, 'share');
+        $paymentResponse->redirectUrl = JUri::base() . JRoute::_(CrowdfundingHelperRoute::getBackingRoute($item->slug, $item->catslug, 'share'));
 
         // Disable After Events.
         $paymentResponse->triggerEvents = array();
+
+        JDEBUG ? $this->log->add(JText::_('Payment Result'), $this->debugType, $paymentResponse) : null;
 
         return $paymentResponse;
     }
